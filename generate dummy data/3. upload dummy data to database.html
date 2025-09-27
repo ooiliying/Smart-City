@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Upload Patient Lab Reports to Database</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+    }
+    input, button {
+      font-size: 16px;
+      padding: 10px;
+      margin-top: 10px;
+      width: 100%;
+    }
+    #output {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      background: #f9f9f9;
+      padding: 15px;
+      border: 1px solid #ddd;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Upload Patient Lab Reports to Database</h2>
+  <input type="file" id="jsonFile" accept=".json" />
+  <button id="uploadBtn">Upload to Database</button>
+  <div id="output"></div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+
+    // TODO: Replace with your actual Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyAJfQftOUOUmIxZUFvLQCrR4sIWkJLNIlg",
+      authDomain: "smart-city-ad271.firebaseapp.com",
+      projectId: "smart-city-ad271",
+      storageBucket: "smart-city-ad271.appspot.com",
+      messagingSenderId: "179825192263",
+      appId: "1:179825192263:web:48b013c4646878d770f062",
+      measurementId: "G-CHM4SZBZDZ"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const uploadBtn = document.getElementById("uploadBtn");
+    const jsonFileInput = document.getElementById("jsonFile");
+    const output = document.getElementById("output");
+
+    uploadBtn.onclick = async () => {
+      const file = jsonFileInput.files[0];
+      if (!file) {
+        alert("Please select a JSON file first.");
+        return;
+      }
+
+      const text = await file.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+        if (!Array.isArray(data)) throw new Error("JSON is not an array.");
+      } catch (err) {
+        output.textContent = "Invalid JSON file: " + err.message;
+        return;
+      }
+
+      output.textContent = `Uploading ${data.length} patients...\n`;
+
+      let successCount = 0;
+      let totalReports = 0;
+
+      for (const [index, patient] of data.entries()) {
+        const {
+          nric,
+          name,
+          dob,
+          address,
+          historicalLabReports,
+          familyMedicalHistory,
+          transferInfo
+        } = patient;
+
+        if (!historicalLabReports || historicalLabReports.length === 0) {
+          output.textContent += `⚠️ Patient ${index + 1} (${name}) has no lab reports, skipping.\n`;
+          continue;
+        }
+
+        for (const report of historicalLabReports) {
+          totalReports++;
+          try {
+            const docData = {
+              nric,
+              name,
+              dob,
+              address,
+              familyMedicalHistory,
+              transferInfo,
+              testType: report.testType,
+              testResult: report.testResult,
+              reportDate: report.reportDate,
+              remarks: report.remarks || "",
+              uploadedAt: serverTimestamp()
+            };
+
+            await addDoc(collection(db, "patient_lab_reports"), docData);
+            successCount++;
+
+            output.textContent += `✔️ Uploaded patient ${index + 1} report: ${name} (${nric}) - ${report.testType}\n`;
+          } catch (err) {
+            output.textContent += `❌ Failed patient ${index + 1} report: ${name} (${nric}) - ${report.testType} — ${err.message}\n`;
+          }
+        }
+      }
+
+      output.textContent += `\n✅ Upload complete. ${successCount}/${totalReports} lab reports uploaded from ${data.length} patients.`;
+    };
+  </script>
+
+</body>
+</html>
